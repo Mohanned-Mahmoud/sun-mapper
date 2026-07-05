@@ -1,7 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { GeocodeAddressQueryParams, GeocodeAddressResponse } from "@workspace/api-zod";
 
-const router: IRouter = Router();
+const router = Router();
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "SunSide/1.0 (sun-side seating planner; contact@sunside.app)";
@@ -53,7 +53,7 @@ async function nominatimSearch(
   return res.json() as Promise<NominatimItem[]>;
 }
 
-router.get("/geocode", async (req, res) => {
+router.get("/geocode", async (req: any, res: any) => {
   const parsed = GeocodeAddressQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing required query parameter: q" });
@@ -113,7 +113,7 @@ router.get("/geocode", async (req, res) => {
     const data = GeocodeAddressResponse.parse(suggestions);
     res.json(data);
   } catch (err) {
-    req.log.error({ err }, "Geocoding error");
+    (req as any).log.error({ err }, "Geocoding error");
     res.status(500).json({ error: "Internal server error during geocoding" });
   }
 });
