@@ -1,0 +1,363 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: SunSide API — sun-side seating planner for commuters
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: geocode
+    description: Address geocoding
+  - name: trip
+    description: Trip sun analysis
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /geocode:
+    get:
+      operationId: geocodeAddress
+      tags: [geocode]
+      summary: Geocode an address
+      description: Search for addresses using Nominatim (OpenStreetMap). Returns a list of suggestions with coordinates.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Address search query
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 5
+          description: Maximum number of results
+        - name: userLat
+          in: query
+          required: false
+          schema:
+            type: number
+          description: User's current latitude for proximity sorting
+        - name: userLon
+          in: query
+          required: false
+          schema:
+            type: number
+          description: User's current longitude for proximity sorting
+      responses:
+        "200":
+          description: Geocoding results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeocodeSuggestion"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trip/analyze:
+    post:
+      operationId: analyzeTrip
+      tags: [trip]
+      summary: Analyze sun exposure for a multi-leg trip
+      description: For each trip leg, computes which side of the vehicle faces the sun, weather conditions, and a seating recommendation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TripInput"
+      responses:
+        "200":
+          description: Trip analysis results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripAnalysis"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    GeocodeSuggestion:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: Human-readable address
+        lat:
+          type: number
+          description: Latitude
+        lon:
+          type: number
+          description: Longitude
+        placeId:
+          type: string
+          description: Unique place identifier
+        distanceKm:
+          type: number
+          description: Distance in km from the reference point (user location or map center), if available
+      required:
+        - displayName
+        - lat
+        - lon
+        - placeId
+
+    VehicleType:
+      type: string
+      enum: [Bus, Microbus, Car, Train, Metro]
+
+    TripLegInput:
+      type: object
+      properties:
+        vehicleType:
+          $ref: "#/components/schemas/VehicleType"
+        fromLabel:
+          type: string
+          description: Human-readable origin label
+        toLabel:
+          type: string
+          description: Human-readable destination label
+        fromLat:
+          type: number
+        fromLon:
+          type: number
+        toLat:
+          type: number
+        toLon:
+          type: number
+        departureTime:
+          type: string
+          description: ISO 8601 datetime string for departure
+      required:
+        - vehicleType
+        - fromLabel
+        - toLabel
+        - fromLat
+        - fromLon
+        - toLat
+        - toLon
+        - departureTime
+
+    TripInput:
+      type: object
+      properties:
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/TripLegInput"
+          minItems: 1
+      required:
+        - legs
+
+    WeatherInfo:
+      type: object
+      properties:
+        available:
+          type: boolean
+          description: Whether weather data was successfully fetched
+        temperatureCelsius:
+          type: number
+          description: Temperature in Celsius
+        weatherCode:
+          type: integer
+          description: WMO weather code
+        description:
+          type: string
+          description: Human-readable weather description
+        badge:
+          type: string
+          enum: [Hot, Warm, Cool]
+          description: Temperature comfort badge
+        weatherTimestamp:
+          type: string
+          description: ISO 8601 timestamp of the matched weather reading (local time)
+        unavailableReason:
+          type: string
+          description: Reason weather is unavailable, when available is false
+      required:
+        - available
+        - temperatureCelsius
+        - weatherCode
+        - description
+        - badge
+
+    SunSample:
+      type: object
+      properties:
+        minutesElapsed:
+          type: number
+        azimuthDeg:
+          type: number
+        altitudeDeg:
+          type: number
+        side:
+          type: string
+          enum: [Left, Right, None]
+      required:
+        - minutesElapsed
+        - azimuthDeg
+        - altitudeDeg
+        - side
+
+    SegmentBreakdownItem:
+      type: object
+      properties:
+        startMinute:
+          type: number
+          description: Minutes elapsed from departure when this segment begins
+        endMinute:
+          type: number
+          description: Minutes elapsed from departure when this segment ends
+        durationMinutes:
+          type: number
+          description: Duration of this segment in minutes
+        bearingDeg:
+          type: number
+          description: Average compass bearing for this segment (0-360)
+        headingLabel:
+          type: string
+          description: Human-readable heading direction (e.g. "north", "east")
+        sunSide:
+          type: string
+          enum: [Left, Right, None]
+          description: Which side of the vehicle the sun is on during this segment
+      required:
+        - startMinute
+        - endMinute
+        - durationMinutes
+        - bearingDeg
+        - headingLabel
+        - sunSide
+
+    LegResult:
+      type: object
+      properties:
+        legIndex:
+          type: integer
+        vehicleType:
+          $ref: "#/components/schemas/VehicleType"
+        fromLabel:
+          type: string
+        toLabel:
+          type: string
+        bearing:
+          type: number
+          description: Travel compass bearing in degrees (0-360)
+        durationMinutes:
+          type: number
+          description: Estimated trip duration in minutes
+        distanceKm:
+          type: number
+          description: Distance in kilometers
+        sunSide:
+          type: string
+          enum: [Left, Right, None]
+          description: Which side of the vehicle faces the sun for most of the trip
+        sunPercentLeft:
+          type: number
+          description: Percentage of trip where sun is on the left
+        sunPercentRight:
+          type: number
+          description: Percentage of trip where sun is on the right
+        recommendation:
+          type: string
+          description: Human-readable seating recommendation
+        weather:
+          $ref: "#/components/schemas/WeatherInfo"
+        samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/SunSample"
+          description: Time-sampled sun positions across the trip
+        routingSource:
+          type: string
+          enum: [osrm, openrouteservice, straight_line, straight_line_rail]
+          description: Routing data source used for this leg
+        routeCoordinates:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+            minItems: 2
+            maxItems: 2
+          description: List of [lat, lon] pairs tracing the route path
+        segmentBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/SegmentBreakdownItem"
+          description: Per-segment sun-side breakdown showing how sun exposure changes as the route curves
+      required:
+        - legIndex
+        - vehicleType
+        - fromLabel
+        - toLabel
+        - bearing
+        - durationMinutes
+        - distanceKm
+        - sunSide
+        - sunPercentLeft
+        - sunPercentRight
+        - recommendation
+        - weather
+        - samples
+        - routingSource
+        - routeCoordinates
+        - segmentBreakdown
+
+    TripAnalysis:
+      type: object
+      properties:
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/LegResult"
+        analyzedAt:
+          type: string
+          description: ISO 8601 timestamp when analysis was performed
+      required:
+        - legs
+        - analyzedAt
